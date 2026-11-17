@@ -139,4 +139,32 @@ describe("Copper hands refunds to the Refund agent", () => {
     expect(result.agent).toBe("copper");
     expect(await listRefunds()).toHaveLength(0);
   });
+
+  it("tries once more when the model has a bad moment", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let tries = 0;
+    model = new MockLanguageModelV4({
+      doStream: async () => {
+        if (tries++ === 0) throw new Error("503 overloaded");
+        return {
+          stream: convertArrayToReadableStream(
+            says("All good now.") as never[],
+          ),
+        };
+      },
+    });
+    const { askCopper } = await import("@/lib/copper/assistant/ask");
+    const result = await finalValue(
+      (
+        await askCopper({
+          messages: [{ role: "user", content: "Any update?" }],
+          useTools: true,
+          agent: "refund",
+        })
+      ).progress,
+    );
+    expect(result.status).toBe("done");
+    expect(result.reply).toBe("All good now.");
+    expect(tries).toBe(2);
+  });
 });

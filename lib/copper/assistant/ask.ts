@@ -151,17 +151,39 @@ export async function askCopper({
     return handedOff;
   }
 
+  /**
+   * Runs one agent. If the model call fails before it has said anything (the
+   * model service can have a bad moment), it tries once more.
+   */
+  async function run(who: Agent) {
+    for (let attempt = 1; ; attempt++) {
+      const stepsBefore = progress.steps.length;
+      try {
+        return await consume(startStream(who));
+      } catch (error) {
+        console.error(
+          `[askCopper] ${who} agent failed (try ${attempt}):`,
+          error,
+        );
+        if (attempt >= 2 || progress.reply.trim()) throw error;
+        // Drop the half-finished steps of the failed try, then try again.
+        progress.steps.length = stepsBefore;
+        update(snapshot());
+      }
+    }
+  }
+
   // Read the stream in the background, so the panel gets the first update now.
   void (async () => {
     try {
-      const handedOff = await consume(startStream(startsWith));
+      const handedOff = await run(startsWith);
       if (handedOff && startsWith === "copper") {
         // The Refund agent takes over; Copper's own words are dropped so the
         // customer hears from one agent at a time.
         progress.agent = "refund";
         progress.reply = "";
         update(snapshot());
-        await consume(startStream("refund"));
+        await run("refund");
       }
       progress.status = "done";
       if (!progress.reply.trim()) progress.reply = SORRY;
