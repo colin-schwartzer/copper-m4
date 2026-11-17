@@ -22,9 +22,9 @@ export type ConsoleState = {
 
 export async function getConsoleState(): Promise<ConsoleState> {
   const orders = listOrders();
-  const refunds = listRefunds();
+  const [refunds, limitUsd] = await Promise.all([listRefunds(), getLimit()]);
   return {
-    limitUsd: getLimit(),
+    limitUsd,
     orders: orders.map((o) => ({
       ...o,
       refund: refunds.find((r) => r.orderId === o.id) ?? null,
@@ -46,9 +46,9 @@ export async function decide(refundId: string, decision: "approve" | "reject") {
 }
 
 export async function refundStatus(refundId: string) {
-  return getRefund(String(refundId))?.status ?? null;
+  return (await getRefund(String(refundId)))?.status ?? null;
 }
 
 export async function resetDemo() {
-  resetRefunds();
+  await resetRefunds();
 }

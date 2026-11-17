@@ -50,7 +50,7 @@ const STARTERS = [
   "How much is Copper Home with Copper Plus, paid yearly, for 2 years?",
   "Is Copper Notes in Night Sky in stock?",
   "Is Copper Plus cheaper monthly or yearly?",
-  "I'd like a refund for order ORD-1003, it's not what I expected.",
+  "I'd like a refund for order #1003, it's not what I expected.",
 ];
 
 /** Refund ids still waiting for a person, read from the Refund agent's tool results. */

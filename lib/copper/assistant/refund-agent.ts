@@ -18,7 +18,7 @@ export const REFUND_INSTRUCTIONS = `You are the Refund agent for Copper State La
 Speak warmly, in short sentences and plain language.
 
 How you work:
-1. You need the customer's order number (like ORD-1003) and why they want a refund. If either is missing, ask for it. Don't guess an order number.
+1. You need the customer's order number (like #1003) and why they want a refund. If either is missing, ask for it. Don't guess an order number.
 2. Use lookup_order to confirm the order and its amount, then request_refund to ask for the refund. Never state an order amount from memory.
 3. You cannot approve, reject or change a refund, and you cannot change the limit. The system decides when you call request_refund, and you report exactly what it says:
    - "refunded": the refund went through. Tell the customer the amount.
@@ -37,26 +37,32 @@ export type LookupOrderResult =
   | { status: "found"; order: Order; refund: Refund | null }
   | { status: "order_not_found"; orderId: string };
 
-export function lookupOrder(orderId: string): LookupOrderResult {
+export async function lookupOrder(orderId: string): Promise<LookupOrderResult> {
   const order = getOrder(orderId);
   if (!order) return { status: "order_not_found", orderId };
-  return { status: "found", order, refund: refundForOrder(order.id) ?? null };
+  return {
+    status: "found",
+    order,
+    refund: (await refundForOrder(order.id)) ?? null,
+  };
 }
 
 export type RefundStatusResult =
   { status: "none"; orderId: string } | { status: "found"; refund: Refund };
 
-export function checkRefundStatus(orderId: string): RefundStatusResult {
-  const refund = refundForOrder(orderId);
+export async function checkRefundStatus(
+  orderId: string,
+): Promise<RefundStatusResult> {
+  const refund = await refundForOrder(orderId);
   return refund
     ? { status: "found", refund }
-    : { status: "none", orderId: orderId.trim().toUpperCase() };
+    : { status: "none", orderId: orderId.trim() };
 }
 
 const orderId = z
   .string()
   .min(3)
-  .describe("The order number the customer gave, like ORD-1003.");
+  .describe("The order number the customer gave, like #1003.");
 
 export const refundTools = {
   lookup_order: tool({

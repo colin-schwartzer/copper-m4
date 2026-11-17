@@ -91,6 +91,12 @@ export function RefundConsole() {
 
   return (
     <div className="mt-6 space-y-6">
+      <p className="text-muted-foreground text-sm">
+        You play the customer in the chat. Copper hands a refund request to the
+        Refund agent, which asks the app for the refund. The app compares the
+        amount with your limit: at or under it, the refund goes through; over
+        it, the refund waits here for your Approve or Reject.
+      </p>
       <Card>
         <CardHeader>
           <CardTitle>Auto-refund limit</CardTitle>
