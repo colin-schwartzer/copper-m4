@@ -270,4 +270,18 @@ export const copperTools = {
     }),
     execute: async ({ query }) => searchDocs(query),
   }),
+  // Module 4: the hand-off. ask.ts sees this tool run and passes the chat to
+  // the Refund agent (lib/copper/assistant/refund-agent.ts).
+  hand_off_to_refund_agent: tool({
+    description:
+      "Hands the chat to the Refund agent. Use it whenever the customer asks for a refund or their money back, or asks about a refund they already requested. Don't answer refund requests yourself.",
+    inputSchema: z.object({
+      summary: z
+        .string()
+        .describe("One short sentence: what the customer wants."),
+    }),
+    execute: async () => ({ handedOffTo: "Refund agent" }),
+  }),
 };
+
+export const HAND_OFF_TOOL = "hand_off_to_refund_agent";

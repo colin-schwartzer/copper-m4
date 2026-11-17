@@ -14,7 +14,13 @@ import {
   WrenchIcon,
   XIcon,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { SetupRequired } from "@/components/setup-required";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,18 +36,41 @@ import { readLive } from "@/lib/ai/live";
 import { askCopper, type ChatMessage } from "@/lib/copper/assistant/ask";
 import { splitCitations } from "@/lib/copper/assistant/citations";
 import {
+  type Agent,
   type Progress,
+  REFUND_TOOL_LABELS,
   type ToolStep,
   TOOL_LABELS,
 } from "@/lib/copper/assistant/progress";
 import { formatUsd, getPlans, getProducts } from "@/lib/copper/catalog";
+import { refundStatus } from "@/lib/copper/refund-actions";
 import { cn } from "@/lib/utils";
 
 const STARTERS = [
   "How much is Copper Home with Copper Plus, paid yearly, for 2 years?",
   "Is Copper Notes in Night Sky in stock?",
   "Is Copper Plus cheaper monthly or yearly?",
+  "I'd like a refund for order ORD-1003, it's not what I expected.",
 ];
+
+/** Refund ids still waiting for a person, read from the Refund agent's tool results. */
+function pendingRefundIds(turns: Turn[]): string[] {
+  const ids = new Set<string>();
+  for (const { progress } of turns)
+    for (const step of progress.steps) {
+      if (step.type !== "tool" || step.state !== "done") continue;
+      const out = step.output as
+        | { status?: string; refund?: { id?: string; status?: string } }
+        | undefined;
+      if (
+        step.name === "request_refund" &&
+        out?.status === "pending_approval" &&
+        out.refund?.id
+      )
+        ids.add(out.refund.id);
+    }
+  return [...ids];
+}
 
 type Turn = { question: string; progress: Progress };
 type Chats = { tools: Turn[]; noTools: Turn[] };
@@ -65,6 +94,10 @@ export function AskCopper({
   const key = useTools ? "tools" : "noTools";
   const turns = chats[key];
   const busy = turns.at(-1)?.progress.status === "working";
+  // After a hand-off the Refund agent keeps the chat (tools chat only).
+  const agent: Agent = useTools
+    ? (turns.at(-1)?.progress.agent ?? "copper")
+    : "copper";
 
   // Open from the header's #ask link or a page load at /#ask. Clicking the
   // link again fires no hashchange, so listen for the click too.
@@ -85,6 +118,36 @@ export function AskCopper({
   useEffect(() => {
     if (body.current) body.current.scrollTop = body.current.scrollHeight;
   }, [chats, useTools]);
+
+  // When a person decides a waiting refund in the Refund Console, the chat
+  // tells the Refund agent, which checks the real status and tells the
+  // customer. (Polls only while a refund is waiting.)
+  const announced = useRef(new Set<string>());
+  const sendRef = useRef<(question: string) => Promise<void>>(async () => {});
+  const waiting = pendingRefundIds(chats.tools).filter(
+    (id) => !announced.current.has(id),
+  );
+  const watch = waiting.join(",");
+  const check = useCallback(async () => {
+    for (const id of watch ? watch.split(",") : []) {
+      const status = await refundStatus(id);
+      if (status && status !== "pending" && !announced.current.has(id)) {
+        announced.current.add(id);
+        void sendRef.current(
+          `Update on my refund ${id}: it was just decided. Please check its status and tell me.`,
+        );
+        return;
+      }
+    }
+  }, [watch]);
+  useEffect(() => {
+    sendRef.current = send;
+  });
+  useEffect(() => {
+    if (!watch || busy || !useTools) return;
+    const timer = setInterval(() => void check(), 2500);
+    return () => clearInterval(timer);
+  }, [watch, busy, useTools, check]);
 
   async function send(question: string) {
     question = question.trim();
@@ -115,6 +178,8 @@ export function AskCopper({
       const { progress } = await askCopper({
         messages,
         useTools: chat === "tools",
+        // Only sent once the Refund agent has the chat.
+        ...(agent === "refund" && { agent }),
       });
       for await (const update of readLive(progress)) setProgress(update);
     } catch {
@@ -154,10 +219,12 @@ export function AskCopper({
               </span>
               <div className="min-w-0 flex-1">
                 <SheetTitle className="text-base font-bold text-white">
-                  Ask Copper
+                  {agent === "refund" ? "Refund agent" : "Ask Copper"}
                 </SheetTitle>
                 <SheetDescription className="text-xs text-white/70">
-                  Prices, totals and stock, checked with tools.
+                  {agent === "refund"
+                    ? "Copper handed this chat to the Refund agent."
+                    : "Prices, totals, stock and refunds, checked with tools."}
                 </SheetDescription>
               </div>
               <SheetClose asChild>
@@ -199,7 +266,11 @@ export function AskCopper({
                     <p className="bg-primary text-primary-foreground ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm px-4 py-2">
                       {turn.question}
                     </p>
-                    <Answer progress={turn.progress} useTools={useTools} />
+                    <Answer
+                      progress={turn.progress}
+                      useTools={useTools}
+                      agent={turn.progress.agent ?? "copper"}
+                    />
                   </div>
                 ))}
                 {!busy && (
@@ -263,9 +334,11 @@ export function AskCopper({
 function Answer({
   progress,
   useTools,
+  agent,
 }: {
   progress: Progress;
   useTools: boolean;
+  agent: Agent;
 }) {
   const { steps, reply, status } = progress;
   const used = new Set(
@@ -289,11 +362,17 @@ function Answer({
           node={<WrenchIcon className="size-3" />}
           nodeClass="bg-muted-foreground"
           label={
-            useTools ? "Tools Copper can use" : "Tools given to Copper: none"
+            !useTools
+              ? "Tools given to Copper: none"
+              : agent === "refund"
+                ? "Tools the Refund agent can use"
+                : "Tools Copper can use"
           }
         >
           <div className="flex flex-wrap gap-1.5">
-            {Object.keys(TOOL_LABELS).map((name) => (
+            {Object.keys(
+              agent === "refund" ? REFUND_TOOL_LABELS : TOOL_LABELS,
+            ).map((name) => (
               <span
                 key={name}
                 className={cn(
@@ -483,7 +562,9 @@ function ToolCard({ step, number }: { step: ToolStep; number: number }) {
           tool {number}
         </span>
         <span className="ml-auto text-xs text-white/80">
-          {TOOL_LABELS[step.name] ?? "Using a tool"}
+          {TOOL_LABELS[step.name] ??
+            REFUND_TOOL_LABELS[step.name] ??
+            "Using a tool"}
         </span>
       </div>
       <div className="space-y-2 px-3 py-3">
@@ -656,6 +737,37 @@ function ToolOutput({ name, output }: { name: string; output: any }) {
         ))}
       </ol>
     );
+  if (name === "hand_off_to_refund_agent" && output?.handedOffTo)
+    return <p className="text-xs">Chat handed to the {output.handedOffTo}.</p>;
+  if (
+    (name === "lookup_order" ||
+      name === "request_refund" ||
+      name === "check_refund_status") &&
+    output?.status
+  ) {
+    const refund = output.refund ?? null;
+    const order = output.order ?? null;
+    return (
+      <div className="space-y-1 text-xs">
+        <p>
+          <span className="bg-accent rounded-full px-2 py-0.5 font-semibold text-white">
+            {String(output.status).replaceAll("_", " ")}
+          </span>
+        </p>
+        {order && (
+          <p>
+            {order.id}: {order.item}, {formatUsd(order.amountUsd)}
+          </p>
+        )}
+        {refund && (
+          <p>
+            Refund {refund.id} on {refund.orderId}:{" "}
+            {formatUsd(refund.amountUsd)}, {refund.status}
+          </p>
+        )}
+      </div>
+    );
+  }
   // A tool without its own layout yet: show what came back as plain text.
   return (
     <pre className="max-h-48 overflow-auto text-xs whitespace-pre-wrap">

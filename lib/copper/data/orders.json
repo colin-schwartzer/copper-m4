@@ -1,0 +1,39 @@
+{
+  "orders": [
+    {
+      "id": "ORD-1001",
+      "customer": "Dana Reyes",
+      "item": "Copper Plus, annual",
+      "amountUsd": 79,
+      "orderedOn": "2026-11-02"
+    },
+    {
+      "id": "ORD-1002",
+      "customer": "Marcus Lee",
+      "item": "Copper Plus, monthly",
+      "amountUsd": 7.99,
+      "orderedOn": "2026-11-09"
+    },
+    {
+      "id": "ORD-1003",
+      "customer": "Priya Nair",
+      "item": "Copper Notes (Desert Sand)",
+      "amountUsd": 129,
+      "orderedOn": "2026-10-28"
+    },
+    {
+      "id": "ORD-1004",
+      "customer": "Tom Alvarez",
+      "item": "Copper Home (Night Sky)",
+      "amountUsd": 149,
+      "orderedOn": "2026-10-30"
+    },
+    {
+      "id": "ORD-1005",
+      "customer": "Jess Okafor",
+      "item": "Copper Home (Polished Copper)",
+      "amountUsd": 149,
+      "orderedOn": "2026-11-05"
+    }
+  ]
+}

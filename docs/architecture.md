@@ -139,3 +139,20 @@ second agent, and a person approving the large ones.
 |---|---|---|
 | Page | `app/support/page.tsx` | The "Refund Console" title and nothing else yet, linked from the header as Support |
 | Chat panel | `components/copper/ask-copper.tsx` | With the `docked` prop it starts open and the page beside it stays clickable. It is the same single agent and tools as on the home page |
+
+## Module 4: Refund agent
+
+**Summary:** Copper hands refund requests to a second agent, the Refund agent. The refund rule (an auto-refund limit) is code, not a prompt, and refunds over the limit wait for a person to click Approve or Reject in the Refund Console.
+
+| Piece | Where | What it does |
+|---|---|---|
+| Page | `app/support/page.tsx`, `components/copper/refund-console.tsx` | Refund Console: change the limit, approve or reject waiting refunds, see orders and refund status. Refreshes every 2 seconds |
+| Rules and data | `lib/copper/refunds.ts`, `lib/copper/data/orders.json` | `requestRefund()` refunds at or under the limit, holds anything over it as pending, and refuses a second refund on the same order. Refunds live in server memory and reset on restart |
+| Browser calls | `lib/copper/refund-actions.ts` | Server Actions the console and chat call (read state, set limit, approve/reject, reset demo) |
+| Refund agent | `lib/copper/assistant/refund-agent.ts` | Its own instructions and three tools: `lookup_order`, `request_refund`, `check_refund_status`. It has no way to approve, reject or change the limit |
+| Hand-off | `lib/copper/assistant/tools.ts`, `ask.ts` | Copper's `hand_off_to_refund_agent` tool ends Copper's turn; `askCopper` then runs the Refund agent in the same chat. The panel keeps sending `agent: "refund"` |
+| AI calls | `lib/ai/call.ts` (module 4, feature `refund-agent`) | One streamed call per turn, up to 5 steps |
+
+**Data flow:** customer asks for a refund → Copper calls the hand-off tool → Refund agent looks up the order and calls `request_refund` → code applies the limit → refunded, or pending. A pending refund shows in the console; when a person decides, the chat notices and the agent checks the real status and tells the customer.
+
+**Decisions and trade-offs:** The limit, the duplicate check and the approval live in code because a model can be talked into things (a claimed supervisor approval, a repeated request); code can't. The agent's tools can only ask. In-memory storage keeps the app running with no database; on a multi-instance host it would need a real table.
