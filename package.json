@@ -25,6 +25,7 @@
     "@streamdown/math": "1.0.3",
     "@streamdown/mermaid": "1.0.3",
     "@tanstack/react-table": "9.2.8",
+    "@vercel/blob": "2.9.0",
     "ai": "7.0.137",
     "class-variance-authority": "0.7.1",
     "cmdk": "1.1.1",

@@ -4,9 +4,10 @@
 // goes through; over it, it waits for a person in the Refund Console. A
 // second request for the same order is refused.
 // This is the only file that knows where refunds are kept. On Vercel they go
-// in Upstash Redis (Vercel Storage), so every serverless instance sees the
-// same refunds; with no Redis set up (local development, tests) they stay in
-// server memory and reset on restart.
+// in Vercel Blob storage (or Upstash Redis, if that is connected instead), so
+// every serverless instance sees the same refunds; with neither set up (tests,
+// a fresh clone) they stay in server memory and reset on restart.
+import { get, put } from "@vercel/blob";
 import data from "./data/orders.json";
 
 export type Order = {
@@ -72,6 +73,9 @@ async function redis(command: string[]): Promise<unknown> {
   return ((await response.json()) as { result: unknown }).result;
 }
 
+const BLOB_PATH = "copper-refunds.json";
+const hasBlob = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+
 const g = globalThis as unknown as { __copperRefunds?: Store };
 
 async function load(): Promise<Store> {
@@ -79,11 +83,24 @@ async function load(): Promise<Store> {
     const raw = await redis(["GET", KEY]);
     return typeof raw === "string" ? (JSON.parse(raw) as Store) : fresh();
   }
+  if (hasBlob()) {
+    // useCache: false reads the latest copy, never a cached one.
+    const blob = await get(BLOB_PATH, { access: "private", useCache: false });
+    if (!blob || blob.statusCode !== 200) return fresh();
+    return JSON.parse(await new Response(blob.stream).text()) as Store;
+  }
   return (g.__copperRefunds ??= fresh());
 }
 
 async function save(store: Store): Promise<void> {
   if (redisConfig()) await redis(["SET", KEY, JSON.stringify(store)]);
+  else if (hasBlob())
+    await put(BLOB_PATH, JSON.stringify(store), {
+      access: "private",
+      allowOverwrite: true,
+      addRandomSuffix: false,
+      contentType: "application/json",
+    });
   else g.__copperRefunds = store;
 }
 
