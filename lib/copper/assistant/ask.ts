@@ -165,7 +165,13 @@ export async function askCopper({
           `[askCopper] ${who} agent failed (try ${attempt}):`,
           error,
         );
-        if (attempt >= 2 || progress.reply.trim()) throw error;
+        // A used-up quota won't clear by asking again, so don't spend more.
+        if (
+          attempt >= 2 ||
+          progress.reply.trim() ||
+          /quota|429/i.test(String(error))
+        )
+          throw error;
         // Drop the half-finished steps of the failed try, then try again.
         progress.steps.length = stepsBefore;
         update(snapshot());

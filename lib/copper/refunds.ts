@@ -84,10 +84,21 @@ async function load(): Promise<Store> {
     return typeof raw === "string" ? (JSON.parse(raw) as Store) : fresh();
   }
   if (hasBlob()) {
-    // useCache: false reads the latest copy, never a cached one.
-    const blob = await get(BLOB_PATH, { access: "private", useCache: false });
-    if (!blob || blob.statusCode !== 200) return fresh();
-    return JSON.parse(await new Response(blob.stream).text()) as Store;
+    // useCache: false reads the latest copy, never a cached one. Blob can
+    // have a bad moment, so a failed read is tried again.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const blob = await get(BLOB_PATH, {
+          access: "private",
+          useCache: false,
+        });
+        if (!blob || blob.statusCode !== 200) return fresh();
+        return JSON.parse(await new Response(blob.stream).text()) as Store;
+      } catch (error) {
+        if (attempt >= 3) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+      }
+    }
   }
   return (g.__copperRefunds ??= fresh());
 }
